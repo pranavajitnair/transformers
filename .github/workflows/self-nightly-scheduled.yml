@@ -93,7 +93,7 @@ jobs:
       - name: Run all tests on GPU
         working-directory: /workspace/transformers
         run: |
-          python -m pytest -v --make-reports=${{ matrix.machine_type }}_tests_torch_cuda_extensions_gpu tests/deepspeed tests/extended tests/trainer/test_trainer.py::TrainerIntegrationTest -k "(not TrainerIntegrationTest) or (test_torchdynamo)"
+          python -m pytest -v --make-reports=${{ matrix.machine_type }}_tests_torch_cuda_extensions_gpu tests/trainer/test_trainer.py::TrainerIntegrationTest -k "(not TrainerIntegrationTest) or (test_torchdynamo)"
 
       - name: Failure short reports
         if: ${{ failure() }}
