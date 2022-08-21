@@ -456,14 +456,17 @@ class T5Attention(nn.Module):
         batch_size, seq_length = hidden_states.shape[:2]
 
         real_seq_length = seq_length
+        key_length = real_seq_length if key_value_states is None else key_value_states.shape[1]
+        #print(query_length,real_seq_length,key_length)
 
         if past_key_value is not None:
+            #print(past_key_value[0].shape)
             assert (
                 len(past_key_value) == 2
             ), f"past_key_value should have 2 past states: keys and values. Got { len(past_key_value)} past states"
             real_seq_length += past_key_value[0].shape[2] if query_length is None else query_length
-
-        key_length = real_seq_length if key_value_states is None else key_value_states.shape[1]
+            key_length += past_key_value[0].shape[2]
+            #print('hi',query_length,real_seq_length,key_length)
 
         def shape(states):
             """projection"""
@@ -484,14 +487,21 @@ class T5Attention(nn.Module):
                 # (batch_size, n_heads, seq_length, dim_per_head)
                 hidden_states = shape(proj_layer(key_value_states))
 
+            elif past_key_value is not None and key_value_states is not None:
+                # cross-attn
+                # (batch_size, n_heads, seq_length, dim_per_head)
+                hidden_states = shape(proj_layer(key_value_states))
+
+
             if past_key_value is not None:
-                if key_value_states is None:
+                if True:
+                    #print(past_key_value.shape, hidden_states.shape)
                     # self-attn
                     # (batch_size, n_heads, key_length, dim_per_head)
                     hidden_states = torch.cat([past_key_value, hidden_states], dim=2)
-                else:
+                '''else:
                     # cross-attn
-                    hidden_states = past_key_value
+                    hidden_states = past_key_value'''
             return hidden_states
 
         # get query states
@@ -526,6 +536,7 @@ class T5Attention(nn.Module):
                 position_bias = position_bias[:, :, -hidden_states.size(1) :, :]
 
             if mask is not None:
+                #print(position_bias.shape,mask.shape)
                 position_bias = position_bias + mask  # (batch_size, n_heads, seq_length, key_length)
 
         scores += position_bias
@@ -645,12 +656,13 @@ class T5Block(nn.Module):
         output_attentions=False,
         return_dict=True,
     ):
-
+        
+        #print('hi')
         if past_key_value is not None:
             if not self.is_decoder:
                 logger.warning("`past_key_values` is passed to the encoder. Please make sure this is intended.")
             expected_num_past_key_values = 2 if encoder_hidden_states is None else 4
-
+            #print(expected_num_past_key_values,len(past_key_value))
             if len(past_key_value) != expected_num_past_key_values:
                 raise ValueError(
                     f"There should be {expected_num_past_key_values} past states. "
@@ -661,6 +673,7 @@ class T5Block(nn.Module):
             self_attn_past_key_value = past_key_value[:2]
             cross_attn_past_key_value = past_key_value[2:]
         else:
+            #print('None')
             self_attn_past_key_value, cross_attn_past_key_value = None, None
 
         self_attention_outputs = self.layer[0](
@@ -827,8 +840,6 @@ class T5PreTrainedModel(PreTrainedModel):
         # replace possible -100 values in labels by `pad_token_id`
         shifted_input_ids.masked_fill_(shifted_input_ids == -100, pad_token_id)
 
-        assert torch.all(shifted_input_ids >= 0).item(), "Verify that `shifted_input_ids` has only positive values"
-
         return shifted_input_ids
 
 
@@ -944,7 +955,7 @@ class T5Stack(T5PreTrainedModel):
             assert self.is_decoder, f"`use_cache` can only be set to `True` if {self} is used as a decoder"
 
         if attention_mask is None:
-            attention_mask = torch.ones(batch_size, mask_seq_length).to(inputs_embeds.device)
+            attention_mask = torch.ones(batch_size, mask_seq_length, device=inputs_embeds.device)
         if self.is_decoder and encoder_attention_mask is None and encoder_hidden_states is not None:
             encoder_seq_length = encoder_hidden_states.shape[1]
             encoder_attention_mask = torch.ones(
@@ -1847,3 +1858,4 @@ class T5EncoderModel(T5PreTrainedModel):
         )
 
         return encoder_outputs
+
